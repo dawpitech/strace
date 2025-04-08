@@ -86,10 +86,19 @@ void print_syscall(pid_t child, struct user_regs_struct *regs, args_t *args)
 
 static void print_ret(args_t *args, struct user_regs_struct *regs)
 {
-    if (args->s_mode) {
-        printf(") = %lld\n", regs->rax);
-    } else {
+    syscall_t *sys = NULL;
+
+    if (regs->rax <= 330) {
+        sys = &table[regs->rax];
+    }
+    if (sys != NULL && strcmp(sys->name, "exit_group") == 0)
+        args->exit_code = regs->rdi;
+    if (sys != NULL && sys->args[sys->argc] == VOID) {
+        printf(") = ?\n");
+    } else if (!args->s_mode){
         printf(") = 0x%X\n", (unsigned int)regs->rax);
+    } else {
+        printf(") = %lld\n", regs->rax);
     }
     fflush(stdout);
 }
@@ -103,36 +112,35 @@ static int maybe_print_syscall(unsigned char *instr, pid_t child,
         print_syscall(child, regs, args);
         ptrace(PTRACE_SINGLESTEP, child, 0, 0);
         waitpid(child, &status, 0);
-        if (WIFEXITED(status))
-            return 1;
         ptrace(PTRACE_GETREGS, child, 0, regs);
         print_ret(args, regs);
+        if (WIFEXITED(status))
+            return 1;
     }
     return 0;
 }
 
-void trace_syscalls(pid_t child, args_t *args)
+int trace_syscalls(pid_t child, args_t *args)
 {
     int status;
     struct user_regs_struct regs;
     unsigned char instr[2];
-    long rip = 0;
     long data = 0;
 
     waitpid(child, &status, 0);
     while (1) {
         ptrace(PTRACE_GETREGS, child, 0, &regs);
-        rip = regs.rip;
-        data = ptrace(PTRACE_PEEKTEXT, child, (void*)rip, 0);
+        data = ptrace(PTRACE_PEEKTEXT, child, (void *)regs.rip, 0);
         instr[0] = data & 0xFF;
         instr[1] = (data >> 8) & 0xFF;
         if (maybe_print_syscall(instr, child, args, &regs))
-	    break;
+            break;
         ptrace(PTRACE_SINGLESTEP, child, 0, 0);
         waitpid(child, &status, 0);
         if (WIFEXITED(status))
             break;
     }
+    return args->exit_code;
 }
 
 static int parse_args(const int argc, char **argv, args_t *args)
@@ -176,6 +184,6 @@ int main(const int argc, char **argv, char **envp)
         execve(argv[1], &argv[1], envp);
         return EXIT_FAILURE_TECH;
     }
-    trace_syscalls(pid, &args);
+    printf("+++ exited with %d +++\n", trace_syscalls(pid, &args));
     return EXIT_SUCCESS;
 }

@@ -21,6 +21,7 @@ typedef struct syscall_s {
 typedef struct args_s {
     int s_mode;
     int pid;
+    int exit_code;
     char *command;
 } args_t;
 

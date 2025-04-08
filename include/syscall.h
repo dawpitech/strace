@@ -365,7 +365,7 @@ const static syscall_t table[330] = {
     {229, "clock_getres", 2, NUM, CLOCKID_T, STRUCT_TIMESPEC_P, 0, 0, 0, 0},
     {230, "clock_nanosleep", 4, NUM, CLOCKID_T, NUM, CONST_STRUCT_TIMESPEC_P,
         STRUCT_TIMESPEC_P, 0, 0},
-    {231, "exit_group", 1, VOID, NUM, 0, 0, 0, 0, 0},
+    {231, "exit_group", 1, NUM, VOID, 0, 0, 0, 0, 0},
     {232, "epoll_wait", 4, NUM, NUM, STRUCT_EPOLL_EVENT_P, NUM, NUM, 0, 0},
     {233, "epoll_ctl", 4, NUM, NUM, NUM, NUM, STRUCT_EPOLL_EVENT_P, 0, 0},
     {234, "tgkill", 3, NUM, NUM, NUM, NUM, 0, 0, 0},
