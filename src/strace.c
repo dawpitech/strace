@@ -147,6 +147,7 @@ int main(int argc, char **argv, char **envp)
     pid = fork();
     if (pid == 0) {
         ptrace(PTRACE_TRACEME, 0, 0, 0);
+        raise(SIGSTOP);
         execve(argv[1], &argv[1], envp);
         return 84;
     } else {
