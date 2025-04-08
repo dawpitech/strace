@@ -5,7 +5,8 @@
 ## makefile
 ##
 
-SRC =   src/strace.c
+SRC =   src/strace.c \
+	src/cli_args.c
 OBJ = $(SRC:.c=.o)
 NAME = strace
 CFLAGS = -Wall -Wextra -Wpedantic -g3

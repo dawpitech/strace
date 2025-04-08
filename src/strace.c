@@ -14,6 +14,7 @@
 #include <sys/user.h>
 #include <sys/syscall.h>
 #include "../include/syscall.h"
+#include "../include/cli_args.h"
 #include <string.h>
 #include <unistd.h>
 
@@ -21,14 +22,16 @@ static void print_string(pid_t child, long arg)
 {
     long long ptr = 0;
 
+    printf("\"");
     for (;; arg += sizeof arg) {
         ptr = ptrace(PTRACE_PEEKDATA, child, arg, 0);
         if ((long long)ptr == -1)
-            return;
+            break;
         printf("%.*s", (int)(sizeof ptr), (char *)&ptr);
         if (memchr(&ptr, '\0', sizeof ptr) != NULL)
-            return;
+            break;
     }
+    printf("\"");
 }
 
 static void print_type(pid_t child, long arg, syscall_t *sys, int i)
@@ -143,30 +146,6 @@ int trace_syscalls(pid_t child, args_t *args)
     return args->exit_code;
 }
 
-static int parse_args(const int argc, char **argv, args_t *args)
-{
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-s") == 0) {
-            args->s_mode = 1;
-            continue;
-        }
-        if (strcmp(argv[i], "-p") != 0) {
-            args->command = argv[i];
-            return (i + 1) < argc;
-        }
-        if ((i + 1) >= argc)
-            return 1;
-        args->pid = atoi(argv[i + 1]);
-        return !(args->pid > 0) || (i + 2) < argc;
-    }
-    return 1;
-}
-
-static void print_help(void)
-{
-    printf("USAGE: ./strace [-s] [-p <pid>|<command>]\n");
-}
-
 // ReSharper disable once CppJoinDeclarationAndAssignment
 int main(const int argc, char **argv, char **envp)
 {
@@ -181,7 +160,8 @@ int main(const int argc, char **argv, char **envp)
     if (pid == 0) {
         ptrace(PTRACE_TRACEME, 0, 0, 0);
         raise(SIGSTOP);
-        execve(argv[1], &argv[1], envp);
+        execve(argv[get_args_end(argc, argv)], &argv[get_args_end(argc, argv)],
+            envp);
         return EXIT_FAILURE_TECH;
     }
     printf("+++ exited with %d +++\n", trace_syscalls(pid, &args));
