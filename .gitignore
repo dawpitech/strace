@@ -16,3 +16,5 @@ test.txt
 unit_tests
 \#*
 .#*
+strace
+toto
