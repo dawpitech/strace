@@ -18,90 +18,97 @@
 #include <string.h>
 #include <unistd.h>
 
-static void print_string(pid_t child, long arg)
+static int print_string(pid_t child, long arg)
 {
     long long ptr = 0;
+    int tot = 0;
 
-    printf("\"");
+    tot += printf("\"");
     for (;; arg += sizeof arg) {
         ptr = ptrace(PTRACE_PEEKDATA, child, arg, 0);
         if ((long long)ptr == -1)
             break;
-        printf("%.*s", (int)(sizeof ptr), (char *)&ptr);
+        tot += printf("%.*s", (int)(sizeof ptr), (char *)&ptr);
         if (memchr(&ptr, '\0', sizeof ptr) != NULL)
             break;
     }
-    printf("\"");
+    tot += printf("\"");
+    return tot;
 }
 
-static void print_type(pid_t child, long arg, syscall_t *sys, int i)
+static int print_type(pid_t child, long arg, syscall_t *sys, int i)
 {
     switch (sys->args[i]) {
         case NUM:
-            printf("%lld", (unsigned long long)arg);
-            break;
+            return printf("%lld", (unsigned long long)arg);
         case STRING:
-            print_string(child, arg);
-            break;
+            return print_string(child, arg);
         case VOID_P:
-            printf("%p", (void *)(arg));
-            break;
+            return printf("%p", (void *)(arg));
         default:
-            printf("?");
+            return printf("?");
     }
 }
 
-static void iterate_args(pid_t child, syscall_t *sys, args_t *args,
+static int iterate_args(pid_t child, syscall_t *sys, args_t *args,
     unsigned long long *args_)
 {
     long arg = 0;
+    int tot = 0;
 
     for (int i = 0; i < sys->argc; i++) {
         if (i > 0)
-            printf(", ");
+            tot += printf(", ");
         arg = args_[i];
         if (!args->s_mode && sys->args[i] == VOID) {
-            printf("?");
+            tot += printf("?");
             continue;
         }
         if (!args->s_mode) {
-            printf("0x%x", (unsigned int)arg);
+            tot += printf("0x%x", (unsigned int)arg);
             continue;
         }
-        print_type(child, arg, sys, i);
+        tot += print_type(child, arg, sys, i);
     }
+    return tot;
 }
 
-void print_syscall(pid_t child, struct user_regs_struct *regs, args_t *args)
+int print_syscall(pid_t child, struct user_regs_struct *regs, args_t *args)
 {
     syscall_t *sys = NULL;
+    int tot = 0;
     unsigned long long args_[6] = {
         regs->rdi, regs->rsi, regs->rdx,
         regs->rcx, regs->r8, regs->r9,
     };
 
     if (regs->rax > 330)
-        return;
+        return tot;
     sys = &table[regs->rax];
-    printf("%s(", sys->name);
-    iterate_args(child, sys, args, args_);
+    tot += printf("%s(", sys->name);
+    tot += iterate_args(child, sys, args, args_);
+    return tot;
 }
 
-static void print_ret(args_t *args, struct user_regs_struct *regs)
+static void print_ret(args_t *args, struct user_regs_struct *regs, int tot)
 {
     syscall_t *sys = NULL;
+    int off = 1;
 
     if (regs->rax <= 330) {
         sys = &table[regs->rax];
     }
     if (sys != NULL && strcmp(sys->name, "exit_group") == 0)
         args->exit_code = regs->rdi;
+    tot += printf(")");
+    if (tot < 40)
+        off = 40 - tot;
     if (sys != NULL && sys->args[sys->argc] == VOID) {
-        printf(") = ?\n");
+        printf("%*s= ?\n", off, "");
     } else if (!args->s_mode){
-        printf(") = 0x%X\n", (unsigned int)regs->rax);
+        printf("%*s= 0x%X\n", off, "", (unsigned int)regs->rax);
     } else {
-        printf(") = %lld\n", regs->rax);
+        printf("%*s= %lld\n", off, "", regs->rax);
     }
     fflush(stdout);
 }
@@ -110,13 +117,14 @@ static int maybe_print_syscall(unsigned char *instr, pid_t child,
     args_t *args, struct user_regs_struct *regs)
 {
     int status = 0;
+    int tot = 0;
 
     if (instr[0] == 0x0F && instr[1] == 0x05) {
-        print_syscall(child, regs, args);
+        tot += print_syscall(child, regs, args);
         ptrace(PTRACE_SINGLESTEP, child, 0, 0);
         waitpid(child, &status, 0);
         ptrace(PTRACE_GETREGS, child, 0, regs);
-        print_ret(args, regs);
+        print_ret(args, regs, tot);
         if (WIFEXITED(status))
             return 1;
     }
