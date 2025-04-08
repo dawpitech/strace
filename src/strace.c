@@ -138,7 +138,6 @@ int trace_syscalls(pid_t child, args_t *args)
     unsigned char instr[2];
     long data = 0;
 
-    waitpid(child, &status, 0);
     while (1) {
         ptrace(PTRACE_GETREGS, child, 0, &regs);
         data = ptrace(PTRACE_PEEKTEXT, child, (void *)regs.rip, 0);
@@ -154,24 +153,41 @@ int trace_syscalls(pid_t child, args_t *args)
     return args->exit_code;
 }
 
+static int create_process(char **argv, int argc, char **envp, args_t *args)
+{
+    pid_t pid = fork();
+
+    if (pid == 0) {
+        ptrace(PTRACE_TRACEME, 0, 0, 0);
+        raise(SIGSTOP);
+        execve(argv[get_args_end(argc, argv)],
+            &argv[get_args_end(argc, argv)], envp);
+        return EXIT_FAILURE_TECH;
+    }
+    printf("+++ exited with %d +++\n", trace_syscalls(pid, args));
+    return 0;
+}
+
 // ReSharper disable once CppJoinDeclarationAndAssignment
 int main(const int argc, char **argv, char **envp)
 {
     args_t args = {0};
-    pid_t pid;
 
     if (argc < 2 || strcmp(argv[1], "-help") == 0
         || strcmp(argv[1], "--help") == 0
         || parse_args(argc, argv, &args))
         return print_help(), EXIT_FAILURE_TECH;
-    pid = fork();
-    if (pid == 0) {
-        ptrace(PTRACE_TRACEME, 0, 0, 0);
-        raise(SIGSTOP);
-        execve(argv[get_args_end(argc, argv)], &argv[get_args_end(argc, argv)],
-            envp);
-        return EXIT_FAILURE_TECH;
+    if (args.pid > 0) {
+        if (ptrace(PTRACE_ATTACH, args.pid, NULL, NULL) == -1) {
+            perror("ptrace(PTRACE_ATTACH)");
+            return EXIT_FAILURE_TECH;
+        }
+        waitpid(args.pid, NULL, 0);
+        printf("strace: Process %d attached\n", args.pid);
+        printf("+++ exited with %d +++\n", trace_syscalls(args.pid, &args));
+        ptrace(PTRACE_DETACH, args.pid, NULL, NULL);
+    } else {
+        return create_process(argv, argc, envp, &args);
     }
-    printf("+++ exited with %d +++\n", trace_syscalls(pid, &args));
     return EXIT_SUCCESS;
 }

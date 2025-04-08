@@ -19,7 +19,7 @@ int parse_args(const int argc, char **argv, args_t *args)
         }
         if (strcmp(argv[i], "-p") != 0) {
             args->command = argv[i];
-            return (i + 1) < argc;
+            return 0;
         }
         if ((i + 1) >= argc)
             return 1;
