@@ -7,6 +7,7 @@
 
 #ifndef STRACE_H
     #define STRACE_H
+    #define MAX_STRING_LEN 512
 
 typedef struct syscall_s {
     int id;
