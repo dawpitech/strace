@@ -62,7 +62,7 @@ static void iterate_args(pid_t child, syscall_t *sys, args_t *args,
             continue;
         }
         if (!args->s_mode) {
-            printf("0x%X", (unsigned int)arg);
+            printf("0x%x", (unsigned int)arg);
             continue;
         }
         print_type(child, arg, sys, i);
@@ -98,7 +98,6 @@ void trace_syscalls(pid_t child, args_t *args)
 {
     int status;
     struct user_regs_struct regs;
-    char str[MAX_STRING_LEN] = {0};
 
     ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_TRACESYSGOOD);
     waitpid(child, &status, 0);
@@ -118,7 +117,7 @@ void trace_syscalls(pid_t child, args_t *args)
     }
 }
 
-static int parse_args(int argc, char **argv, args_t *args)
+static int parse_args(const int argc, char **argv, args_t *args)
 {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-s") == 0) {
@@ -137,21 +136,28 @@ static int parse_args(int argc, char **argv, args_t *args)
     return 1;
 }
 
-int main(int argc, char **argv, char **envp)
+static void print_help(void)
+{
+    printf("USAGE: ./strace [-s] [-p <pid>|<command>]\n");
+}
+
+// ReSharper disable once CppJoinDeclarationAndAssignment
+int main(const int argc, char **argv, char **envp)
 {
     args_t args = {0};
-    pid_t pid = -1;
+    pid_t pid;
 
-    if (argc < 2 || parse_args(argc, argv, &args))
-        return 84;
+    if (argc < 2 || strcmp(argv[1], "-help") == 0
+        || strcmp(argv[1], "--help") == 0
+        || parse_args(argc, argv, &args))
+        return print_help(), EXIT_FAILURE_TECH;
     pid = fork();
     if (pid == 0) {
         ptrace(PTRACE_TRACEME, 0, 0, 0);
         raise(SIGSTOP);
         execve(argv[1], &argv[1], envp);
-        return 84;
-    } else {
-        trace_syscalls(pid, &args);
+        return EXIT_FAILURE_TECH;
     }
-    return 0;
+    trace_syscalls(pid, &args);
+    return EXIT_SUCCESS;
 }
