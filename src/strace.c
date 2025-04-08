@@ -77,9 +77,9 @@ void print_syscall(pid_t child, struct user_regs_struct *regs, args_t *args)
         regs->rcx, regs->r8, regs->r9,
     };
 
-    if (regs->orig_rax > 330)
+    if (regs->rax > 330)
         return;
-    sys = &table[regs->orig_rax];
+    sys = &table[regs->rax];
     printf("%s(", sys->name);
     iterate_args(child, sys, args, args_);
 }
@@ -94,26 +94,44 @@ static void print_ret(args_t *args, struct user_regs_struct *regs)
     fflush(stdout);
 }
 
+static int maybe_print_syscall(unsigned char *instr, pid_t child,
+    args_t *args, struct user_regs_struct *regs)
+{
+    int status = 0;
+
+    if (instr[0] == 0x0F && instr[1] == 0x05) {
+        print_syscall(child, regs, args);
+        ptrace(PTRACE_SINGLESTEP, child, 0, 0);
+        waitpid(child, &status, 0);
+        if (WIFEXITED(status))
+            return 1;
+        ptrace(PTRACE_GETREGS, child, 0, regs);
+        print_ret(args, regs);
+    }
+    return 0;
+}
+
 void trace_syscalls(pid_t child, args_t *args)
 {
     int status;
     struct user_regs_struct regs;
+    unsigned char instr[2];
+    long rip = 0;
+    long data = 0;
 
-    ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_TRACESYSGOOD);
     waitpid(child, &status, 0);
     while (1) {
-        ptrace(PTRACE_SYSCALL, child, 0, 0);
+        ptrace(PTRACE_GETREGS, child, 0, &regs);
+        rip = regs.rip;
+        data = ptrace(PTRACE_PEEKTEXT, child, (void*)rip, 0);
+        instr[0] = data & 0xFF;
+        instr[1] = (data >> 8) & 0xFF;
+        if (maybe_print_syscall(instr, child, args, &regs))
+	    break;
+        ptrace(PTRACE_SINGLESTEP, child, 0, 0);
         waitpid(child, &status, 0);
         if (WIFEXITED(status))
             break;
-        ptrace(PTRACE_GETREGS, child, 0, &regs);
-        print_syscall(child, &regs, args);
-        ptrace(PTRACE_SYSCALL, child, 0, 0);
-        waitpid(child, &status, 0);
-        if (WIFEXITED(status))
-            break;
-        ptrace(PTRACE_GETREGS, child, 0, &regs);
-        print_ret(args, &regs);
     }
 }
 
